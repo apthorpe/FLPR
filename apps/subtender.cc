@@ -846,6 +846,38 @@ bool subtender_file(std::string const &filename) {
 /*--------------------------------------------------------------------------*/
 
 /**
+ *  \brief Check for subroutine name in library
+ *
+ *  \param[in] lname Subroutine name, previously converted to lower case
+ *  \param[in] sublib Name of library to search
+ *  \returns True if subroutine `lname` was found in library `sublib`,
+ *           false otherwise
+ */
+bool detect_subroutine(const std::string& lname,
+                       const std::string& sublib)
+{
+  bool found_in_sublib {false};
+
+  std::map<std::string, map_ss>::iterator it; 
+  it = map_default_sublibs.find(sublib);
+
+  bool found_sublib_in_master {it != map_default_sublibs.end()};
+
+  if (found_sublib_in_master) {
+    map_ss curlib;
+    curlib = it->second;
+
+    map_ss::iterator lib_it;
+    lib_it = curlib.find(lname);
+
+    found_in_sublib = (lib_it != curlib.end());
+  }
+  return found_in_sublib;
+}
+
+/*--------------------------------------------------------------------------*/
+
+/**
  *  \brief Apply Subtender transform to a given procedure.
  *
  *  Subtender transform will be applied to procedures which
@@ -905,24 +937,29 @@ bool subtender_procedure(File &file,
     std::cerr << "  sp: Scanning " << proc.name() << " as " << lname << std::endl;
 
     for (auto const& sublib: sscfg.scan_libs) {
-      // TODO: Convert this into bool detect_subroutine(const std::string& lname, const std::string& sublib) { return false; }
-      std::map<std::string, map_ss>::iterator it; 
-      it = map_default_sublibs.find(sublib);
-      bool found_sublib_in_master {it != map_default_sublibs.end()};
-      if (found_sublib_in_master) {
-        std::cerr << "    sp: Looking for " << lname << " in library " << sublib << std::endl;
-        map_ss::iterator lib_it;
-        map_ss curlib;
-        curlib = it->second;
-        lib_it = curlib.find(lname);
-        bool found_in_sublib {lib_it != curlib.end()};
-        if (found_in_sublib) {
+      if (detect_subroutine(lname, sublib)) {
           // Hit -- Write to Db
           LocalSubDb.emplace_back(LocalSub(lname, "MysteryFile", 404, sublib));        
           std::cerr << "      sp: *** Found " << lname << " in library " << sublib << std::endl;
           std::cerr << "      sp: " << lname << " -> " << lib_it->second << std::endl;
-        }
       }
+      // std::map<std::string, map_ss>::iterator it; 
+      // it = map_default_sublibs.find(sublib);
+      // bool found_sublib_in_master {it != map_default_sublibs.end()};
+      // if (found_sublib_in_master) {
+      //   std::cerr << "    sp: Looking for " << lname << " in library " << sublib << std::endl;
+      //   map_ss::iterator lib_it;
+      //   map_ss curlib;
+      //   curlib = it->second;
+      //   lib_it = curlib.find(lname);
+      //   bool found_in_sublib {lib_it != curlib.end()};
+      //   if (found_in_sublib) {
+      //     // Hit -- Write to Db
+      //     LocalSubDb.emplace_back(LocalSub(lname, "MysteryFile", 404, sublib));        
+      //     std::cerr << "      sp: *** Found " << lname << " in library " << sublib << std::endl;
+      //     std::cerr << "      sp: " << lname << " -> " << lib_it->second << std::endl;
+      //   }
+      // }
     }
 
   }

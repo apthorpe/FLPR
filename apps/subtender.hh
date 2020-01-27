@@ -90,7 +90,8 @@ void print_usage(std::ostream &os,
 void parse_cmd_line(int argc,
                     char* const* argv,
                     SubScanConfigurator& sscfg);
-
+bool detect_subroutine(const std::string& lname,
+                       const std::string& sublib);
 bool subtender_procedure(File &file,
                          Cursor c,
                          bool internal_procedure,
