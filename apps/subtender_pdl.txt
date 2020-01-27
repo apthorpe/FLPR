@@ -1,0 +1,29 @@
+Set list of source files
+Set list of libraries (to exclude)
+Set list of subroutine names to exclude
+
+Configuring:
+Create global CheckConfigurator containing exclusion patterns/lists and libraries to check against
+
+Scanning:
+For all files
+  For each subroutine
+    If not-empty
+      If name-not-excluded by CheckConfigurator
+?       If not-internal
+1         For each library listed in CheckConfigurator
+1           For each pattern in the library
+              If match, store tuple of (File, Name, Line, Origin) in LocalSub database
+        For each call-stmt in subroutine
+          Extract called subroutine name
+1           For each library listed in CheckConfigurator
+1             For each pattern in the library
+                If match, store tuple of (File, ContainingRoutine, Name, Line, Origin) in CalledSub database
+
+Reporting:
+Count entries in each db
+Get list of unique subs/library
+Get list of files containing matches
+Dump LocalSub database
+Dump CalledSub database
+

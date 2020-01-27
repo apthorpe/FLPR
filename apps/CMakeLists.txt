@@ -35,12 +35,14 @@ set(APP_HEADERS
 # Add any demo applications to this list
 set(APPS_EXE
   "caliper"
-  "mark_executable"
   "flpr-format"
   "parse_files"
   "module"
   "ext_demo"
-  "flpr_show_cst")
+  "flpr_show_cst"
+  "mark_executable"
+  "subtender"
+  )
 
 # Installation Info
 include(GNUInstallDirs)
