@@ -40,6 +40,7 @@
 using File = FLPR::Parsed_File<>;
 using Cursor = typename File::Parse_Tree::cursor_t;
 using Procedure = FLPR::Procedure<File>;
+using Stmt_Cursor = typename File::Stmt_Cursor;
 
 // using vec_str = std::vector<std::string>;
 using set_str = std::set<std::string>;
@@ -613,13 +614,13 @@ std::vector<CalledSub> CalledSubDb {};
 
 /*--------------------------------------------------------------------------*/
 
-/**
- *  \brief Return the lower-case value of a given character
- *  \param[in] in Character
- */
-char chartolower(char in) {
-  return std::tolower(in);
-}
+// /**
+//  *  \brief Return the lower-case value of a given character
+//  *  \param[in] in Character
+//  */
+// char chartolower(char in) {
+//   return std::tolower(in);
+// }
 
 /*--------------------------------------------------------------------------*/
 
@@ -699,7 +700,8 @@ void parse_cmd_line(int argc,
       {
         // Exclude subroutine
         std::string exsub = std::string(optarg);
-        std::transform(exsub.begin(), exsub.end(), exsub.begin(), chartolower);
+        // std::transform(exsub.begin(), exsub.end(), exsub.begin(), chartolower);
+        FLPR::tolower(exsub);
 
         sscfg.excluded_subs.insert(exsub);
         std::cerr << "Excluding subroutine " << exsub << std::endl;
@@ -813,6 +815,46 @@ int main(int argc,
           }
         }
       }
+
+      std::cerr << std::endl << "# Analysis of local routines";
+      if (!sscfg.dry_run) {
+        if (LocalSubDb.size() > 0) {
+          std::cerr << ":" << std::endl;
+          std::cerr << "\"Routine\", \"File\", \"Line\", \"Library\"" << std::endl;
+          for (const auto& dsub : LocalSubDb) {
+            std::cerr << "\"" << dsub.name << "\", "   
+                      << "\"" << dsub.filename << "\", "   
+                      << dsub.lineno << ", "   
+                      << "\"" << dsub.origin
+                      << "\"" << std::endl;
+          }
+        } else {
+          std::cerr << " - no locally-defined routines matched external libraries" << std::endl;        
+        }
+      } else {
+        std::cerr << " - disabled for dry-run" << std::endl;        
+      }
+
+      std::cerr << std::endl << "# Analysis of called routines";
+      if (!sscfg.dry_run) {
+        if (CalledSubDb.size() > 0) {
+          std::cerr << ":" << std::endl;
+          std::cerr << "\"Routine\", \"Parent\", \"File\", \"Line\", \"Library\"" << std::endl;
+          for (const auto& csub : CalledSubDb) {
+            std::cerr << "\"" << csub.name << "\", "   
+                      << "\"" << csub.parent_routine << "\", "
+                      << "\"" << csub.filename << "\", "   
+                      << csub.lineno << ", "   
+                      << "\"" << csub.origin
+                      << "\"" << std::endl;
+          }
+        } else {
+          std::cerr << " - no called routines matched external libraries" << std::endl;        
+        }
+      } else {
+        std::cerr << " - disabled for dry-run" << std::endl;        
+      }
+
     } else {
       err = 3;
       std::cerr << "Error: No valid libraries specified!" << std::endl;
@@ -829,17 +871,22 @@ int main(int argc,
  *  \returns Changed status; true if target file has been changed
  */
 bool subtender_file(std::string const &filename) {
-  std::cerr << "  sf: Scanning " << filename << std::endl;
+  // std::cerr << "  sf: Scanning " << filename << std::endl;
 
   File file(filename);
   if (!file)
     return false;
+
+  sscfg.current_file = filename;
 
   FLPR::Procedure_Visitor puv(file, subtender_procedure);
   bool const scanned = puv.visit();
   // if (changed) {
   //   write_file(std::cout, file);
   // }
+
+  sscfg.current_file = "";
+
   return scanned;
 }
 
@@ -924,44 +971,41 @@ bool subtender_procedure(File &file,
   }
 
   std::string lname {proc.name()};
-  std::transform(lname.begin(), lname.end(), lname.begin(), chartolower);
+  FLPR::tolower(lname);
+  // std::transform(lname.begin(), lname.end(), lname.begin(), chartolower);
 
   // for (auto const& sublib: sscfg.excluded_subs) {
   //   std::cerr << "Excluding: " << sublib << std::endl;
   // }
+  int plineno {404};
+  
+  // There has to be a way to directly get the line number of the first line
+  // of the procedure. This works but it's not direct.
+  auto proc_top_maybe {proc.crange(Procedure::PROC_BEGIN)};
+  for (auto const &stmt : proc_top_maybe) {
+    plineno = stmt.stmt_tree().cursor()->token_range.front().start_line;
+    break;
+  }
+
+  // There has to be a way to directly get the line number of the first line
+  // of the procedure but this isn't it...
+  // plineno = proc_top_maybe->stmt_tree().cursor()->token_range.front().start_line;
 
   // std::cerr << "Checking " << lname << " against exclusion list." << std::endl;
   if (sscfg.excluded_subs.count(lname) > 0) {
-    std::cerr << "  sp: Skipping " << proc.name() << " as " << lname << std::endl;
+    // std::cerr << "  sp: Skipping " << proc.name() << " as " << lname << std::endl;
   } else {
-    std::cerr << "  sp: Scanning " << proc.name() << " as " << lname << std::endl;
+    // std::cerr << "  sp: Scanning " << proc.name() << " as " << lname << std::endl;
 
     for (auto const& sublib: sscfg.scan_libs) {
       if (detect_subroutine(lname, sublib)) {
           // Hit -- Write to Db
-          LocalSubDb.emplace_back(LocalSub(lname, "MysteryFile", 404, sublib));        
-          std::cerr << "      sp: *** Found " << lname << " in library " << sublib << std::endl;
-          std::cerr << "      sp: " << lname << " -> " << lib_it->second << std::endl;
+          LocalSubDb.emplace_back(LocalSub(lname, sscfg.current_file, plineno, sublib));        
+          // std::cerr << "      sp: *** Found " << lname << " on line " << plineno
+          //           << " of " << sscfg.current_file << " in library " << sublib << std::endl;
+//          std::cerr << "      sp: " << lname << " -> " << lib_it->second << std::endl;
       }
-      // std::map<std::string, map_ss>::iterator it; 
-      // it = map_default_sublibs.find(sublib);
-      // bool found_sublib_in_master {it != map_default_sublibs.end()};
-      // if (found_sublib_in_master) {
-      //   std::cerr << "    sp: Looking for " << lname << " in library " << sublib << std::endl;
-      //   map_ss::iterator lib_it;
-      //   map_ss curlib;
-      //   curlib = it->second;
-      //   lib_it = curlib.find(lname);
-      //   bool found_in_sublib {lib_it != curlib.end()};
-      //   if (found_in_sublib) {
-      //     // Hit -- Write to Db
-      //     LocalSubDb.emplace_back(LocalSub(lname, "MysteryFile", 404, sublib));        
-      //     std::cerr << "      sp: *** Found " << lname << " in library " << sublib << std::endl;
-      //     std::cerr << "      sp: " << lname << " -> " << lib_it->second << std::endl;
-      //   }
-      // }
     }
-
   }
 
   /* Detect defined and called subroutines, check them against all selected
@@ -971,15 +1015,49 @@ bool subtender_procedure(File &file,
   // Q1: Does proc.name() match any sublib routine names?
 
   // Set range of proc corresponding to Procedure::EXECUTION_PART
-  auto execution_part{proc.crange(Procedure::EXECUTION_PART)};
+  auto execution_part {proc.crange(Procedure::EXECUTION_PART)};
   
   for (auto const &stmt : execution_part) {
     // Detect called procs and get their names, lcased for scanning
     // Q2: Does called proc name match any sublib routine names? 
-    bool found_continue {false}; 
+    bool found_call {false}; 
     int const stmt_tag = stmt.syntax_tag();
-    found_continue = (   TAG(SG_CONTINUE_STMT) == stmt_tag
-                      || TAG(KW_CONTINUE) == stmt_tag);
+    found_call = (   TAG(SG_CALL_STMT) == stmt_tag
+                  || TAG(KW_CALL) == stmt_tag);
+    if (found_call) {
+      // Get the name of the called subroutine
+      auto punkt = stmt.stmt_tree().cursor().down();
+      assert(TAG(SG_CALL_STMT) == punkt->syntag);
+      punkt.down();
+      assert(TAG(KW_CALL) == punkt->syntag);
+      punkt.next();
+      assert(TAG(SG_PROCEDURE_DESIGNATOR) == punkt->syntag);
+      // std::cerr << "Punkt teile: " << punkt->token_range.size() << std::endl;
+      assert(punkt->token_range.size() == 1);
+      // std::cerr << "Punkt nimt: " << punkt->token_range.front().text() << std::endl;
+      // std::cerr << "Was ist punkt: " << punkt->syntag << std::endl;
+      std::string lcname {punkt->token_range.front().text()};
+      // std::cerr << "      sp: Found subroutine call to " << lcname << std::endl;
+
+      // Drop its case
+      FLPR::tolower(lcname);
+
+      // Get line number
+      int lineno {punkt->token_range.front().start_line};
+
+//      std::cerr << "Line number? " << stmt.stmt_tree().cursor().down().down().next()->token_range.front().start_line << std::endl;
+
+      for (auto const& sublib: sscfg.scan_libs) {
+      // Use detect_subroutine
+        if (detect_subroutine(lcname, sublib)) {
+            // Hit -- Write to Db
+            CalledSubDb.emplace_back(CalledSub(lcname, sscfg.current_file, lname, lineno, sublib));        
+            // std::cerr << "      sp: *** Found " << lcname << " in library " << sublib 
+            //           << ", called from " << lname << std::endl;
+//          std::cerr << "      sp: " << lname << " -> " << lib_it->second << std::endl;
+        }
+      }
+    }
   }
 
   return changed;

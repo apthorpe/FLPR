@@ -65,6 +65,9 @@ struct SubScanConfigurator {
   /// Libraries to scan
   set_str scan_libs;
 
+  /// Libraries to scan
+  std::string current_file {};
+
   /// Constructor, bare
   SubScanConfigurator()
   {
